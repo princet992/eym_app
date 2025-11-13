@@ -6,15 +6,20 @@ import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
 import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
+import { FileDescriptor } from '../../lib/api';
+
+type PickerAsset = FileDescriptor | null;
 
 export default function PostsScreen() {
-  const { posts, addPost, addCommentToPost, role } = useApp();
+  const { posts, addPost, addCommentToPost, deletePost, role, loading } = useApp();
   const layout = useResponsiveSpacing();
   const [postTitle, setPostTitle] = useState('');
   const [postContent, setPostContent] = useState('');
-  const [postImage, setPostImage] = useState<string | null>(null);
+  const [postImage, setPostImage] = useState<PickerAsset>(null);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
+  const [isSubmitting, setSubmitting] = useState(false);
+  const [submittingPostId, setSubmittingPostId] = useState<string | null>(null);
 
   const canCreatePost = role === 'admin';
 
@@ -28,19 +33,22 @@ export default function PostsScreen() {
     setPostTitle('');
     setPostContent('');
     setPostImage(null);
+    setSubmitting(false);
   };
 
-  const handleCreatePost = () => {
+  const handleCreatePost = async () => {
     if (!postTitle.trim() || !postContent.trim()) {
       return;
     }
-    addPost({
-      title: postTitle.trim(),
-      content: postContent.trim(),
-      image: postImage ?? undefined,
-    });
-    resetPostForm();
-    setCreateModalVisible(false);
+    try {
+      setSubmitting(true);
+      await addPost({ title: postTitle.trim(), content: postContent.trim(), media: postImage });
+      resetPostForm();
+      setCreateModalVisible(false);
+    } catch (error) {
+      console.warn('Failed to create post', error);
+      setSubmitting(false);
+    }
   };
 
   const pickImage = async () => {
@@ -53,22 +61,35 @@ export default function PostsScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setPostImage(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setPostImage({
+        uri: asset.uri,
+        name: asset.fileName ?? 'post.jpg',
+        type: asset.mimeType ?? 'image/jpeg',
+      });
     }
   };
 
-  const handleComment = (postId: string) => {
+  const handleComment = async (postId: string) => {
     const draft = commentDrafts[postId];
     if (!draft || !draft.trim()) {
       return;
     }
-    addCommentToPost(postId, {
-      author: authorLabel,
-      message: draft.trim(),
-    });
-    setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
+    setSubmittingPostId(postId);
+    try {
+      await addCommentToPost(postId, {
+        message: draft.trim(),
+        author: authorLabel,
+      });
+      setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
+    } catch (error) {
+      console.warn('Failed to post comment', error);
+    } finally {
+      setSubmittingPostId(null);
+    }
   };
 
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const contentStyle = [
     styles.container,
     {
@@ -77,7 +98,6 @@ export default function PostsScreen() {
       gap: layout.gap,
     },
   ];
-  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
   const previewHeight = layout.isCompact ? 160 : 220;
   const cardImageHeight = layout.isCompact ? 180 : 240;
@@ -88,8 +108,11 @@ export default function PostsScreen() {
         <RoleSwitcher />
 
         {canCreatePost && (
-          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={() => setCreateModalVisible(true)}>
-            <Text style={styles.actionButtonText}>New Post</Text>
+          <Pressable
+            style={[styles.actionButton, constrainedWidth, isSubmitting && styles.disabledButton]}
+            onPress={() => setCreateModalVisible(true)}
+            disabled={isSubmitting}>
+            <Text style={styles.actionButtonText}>{isSubmitting ? 'Posting…' : 'New Post'}</Text>
           </Pressable>
         )}
 
@@ -130,10 +153,17 @@ export default function PostsScreen() {
                 )}
               </View>
               {postImage && (
-                <Image source={{ uri: postImage }} style={[styles.previewImage, { height: previewHeight }]} contentFit="cover" />
+                <Image
+                  source={{ uri: postImage.uri }}
+                  style={[styles.previewImage, { height: previewHeight }]}
+                  contentFit="cover"
+                />
               )}
-              <Pressable style={styles.primaryButton} onPress={handleCreatePost}>
-                <Text style={styles.primaryButtonText}>Publish post</Text>
+              <Pressable
+                style={[styles.primaryButton, isSubmitting && styles.disabledButton]}
+                onPress={handleCreatePost}
+                disabled={isSubmitting}>
+                <Text style={styles.primaryButtonText}>{isSubmitting ? 'Publishing…' : 'Publish post'}</Text>
               </Pressable>
             </View>
           </View>
@@ -141,12 +171,21 @@ export default function PostsScreen() {
 
         <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Latest posts</Text>
-          <Text style={styles.sectionSubtitle}>Updates authored by the admin team</Text>
+          <Text style={styles.sectionSubtitle}>
+            {loading ? 'Loading updates…' : 'Updates authored by the admin team'}
+          </Text>
         </View>
 
         {posts.map((post) => (
           <View key={post.id} style={[styles.card, constrainedWidth]}>
-            <Text style={styles.cardTitle}>{post.title}</Text>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>{post.title}</Text>
+              {role === 'admin' && (
+                <Pressable style={styles.deleteButton} onPress={() => deletePost(post.id)}>
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </Pressable>
+              )}
+            </View>
             {post.image ? (
               <Image
                 source={{ uri: post.image }}
@@ -173,8 +212,13 @@ export default function PostsScreen() {
                 onChangeText={(value) => setCommentDrafts((prev) => ({ ...prev, [post.id]: value }))}
                 style={[styles.input, styles.commentInput]}
               />
-              <Pressable style={styles.secondaryButton} onPress={() => handleComment(post.id)}>
-                <Text style={styles.secondaryButtonText}>Post comment</Text>
+              <Pressable
+                style={[styles.secondaryButton, submittingPostId === post.id && styles.disabledButton]}
+                onPress={() => handleComment(post.id)}
+                disabled={!!submittingPostId}>
+                <Text style={styles.secondaryButtonText}>
+                  {submittingPostId === post.id ? 'Posting…' : 'Post comment'}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -199,6 +243,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   actionButtonText: {
     color: '#fff',
@@ -253,9 +300,24 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   cardTitle: {
     fontSize: 20,
     fontWeight: '700',
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#dc2626',
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   cardImage: {
     borderRadius: 12,

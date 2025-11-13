@@ -6,21 +6,25 @@ import { Alert, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, Te
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
 import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
+import { FileDescriptor } from '../../lib/api';
 
-const memberStatuses = ['active', 'pending', 'inactive'] as const;
+type MemberStatus = 'active' | 'pending' | 'inactive';
 
-type MemberStatus = (typeof memberStatuses)[number];
+type PickerAsset = FileDescriptor | null;
 
 export default function MembersScreen() {
-  const { members, role, addOrUpdateMember, removeMember } = useApp();
+  const { members, role, addOrUpdateMember, removeMember, loading } = useApp();
   const layout = useResponsiveSpacing();
   const [isModalVisible, setModalVisible] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberName, setMemberName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [monthlyContribution, setMonthlyContribution] = useState('');
   const [memberStatus, setMemberStatus] = useState<MemberStatus>('active');
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const [roleLabel, setRoleLabel] = useState('Member');
+  const [avatar, setAvatar] = useState<PickerAsset>(null);
+  const [isSubmitting, setSubmitting] = useState(false);
 
   const canManage = role === 'admin';
 
@@ -33,8 +37,10 @@ export default function MembersScreen() {
     setEditingMemberId(null);
     setMemberName('');
     setMemberEmail('');
+    setPhoneNumber('');
     setMonthlyContribution('');
     setMemberStatus('active');
+    setRoleLabel('Member');
     setAvatar(null);
     setModalVisible(true);
   };
@@ -47,9 +53,11 @@ export default function MembersScreen() {
     setEditingMemberId(member.id);
     setMemberName(member.name);
     setMemberEmail(member.email);
-    setMonthlyContribution(member.monthlyContribution.toString());
-    setMemberStatus(member.status as MemberStatus);
-    setAvatar(member.avatar ?? null);
+    setPhoneNumber(member.phoneNumber ?? '');
+    setMonthlyContribution(member.monthlyContribution ? String(member.monthlyContribution) : '');
+    setMemberStatus(member.status);
+    setRoleLabel(member.roleLabel ?? 'Member');
+    setAvatar(member.avatar ? { uri: member.avatar } : null);
     setModalVisible(true);
   };
 
@@ -63,30 +71,37 @@ export default function MembersScreen() {
       quality: 0.7,
     });
     if (!result.canceled) {
-      setAvatar(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setAvatar({
+        uri: asset.uri,
+        name: asset.fileName ?? 'avatar.jpg',
+        type: asset.mimeType ?? 'image/jpeg',
+      });
     }
   };
 
-  const handleSaveMember = () => {
-    if (!memberName.trim() || !memberEmail.trim() || !monthlyContribution.trim()) {
+  const handleSaveMember = async () => {
+    if (!memberName.trim() || !memberEmail.trim()) {
       return;
     }
 
-    const contributionValue = Number.parseFloat(monthlyContribution);
-    if (Number.isNaN(contributionValue)) {
-      return;
+    try {
+      setSubmitting(true);
+      await addOrUpdateMember({
+        id: editingMemberId ?? undefined,
+        name: memberName.trim(),
+        email: memberEmail.trim(),
+        phoneNumber: phoneNumber.trim() || undefined,
+        roleLabel,
+        status: memberStatus,
+        avatar,
+      });
+      setModalVisible(false);
+    } catch (error) {
+      console.warn('Failed to save member', error);
+    } finally {
+      setSubmitting(false);
     }
-
-    addOrUpdateMember({
-      id: editingMemberId ?? undefined,
-      name: memberName.trim(),
-      email: memberEmail.trim(),
-      monthlyContribution: contributionValue,
-      status: memberStatus,
-      avatar: avatar ?? undefined,
-    });
-
-    setModalVisible(false);
   };
 
   const confirmDeleteMember = (memberId: string) => {
@@ -105,6 +120,7 @@ export default function MembersScreen() {
     );
   };
 
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const contentStyle = [
     styles.container,
     {
@@ -113,7 +129,6 @@ export default function MembersScreen() {
       gap: layout.gap,
     },
   ];
-  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
   const avatarSize = layout.isCompact ? 56 : 64;
 
@@ -123,8 +138,11 @@ export default function MembersScreen() {
         <RoleSwitcher />
 
         {canManage && (
-          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={openCreateModal}>
-            <Text style={styles.actionButtonText}>New Member</Text>
+          <Pressable
+            style={[styles.actionButton, constrainedWidth, isSubmitting && styles.disabledButton]}
+            onPress={openCreateModal}
+            disabled={isSubmitting}>
+            <Text style={styles.actionButtonText}>{isSubmitting ? 'Saving…' : 'New Member'}</Text>
           </Pressable>
         )}
 
@@ -144,14 +162,27 @@ export default function MembersScreen() {
               <TextInput placeholder="Full name" value={memberName} onChangeText={setMemberName} style={styles.input} />
               <TextInput placeholder="Email" value={memberEmail} onChangeText={setMemberEmail} style={styles.input} />
               <TextInput
-                placeholder="Monthly contribution (USD)"
+                placeholder="Phone number"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                style={styles.input}
+                keyboardType="phone-pad"
+              />
+              <TextInput
+                placeholder="Monthly contribution (display only)"
                 value={monthlyContribution}
                 onChangeText={setMonthlyContribution}
                 style={styles.input}
-                keyboardType="numeric"
+                editable={false}
+              />
+              <TextInput
+                placeholder="Role (e.g. President)"
+                value={roleLabel}
+                onChangeText={setRoleLabel}
+                style={styles.input}
               />
               <View style={styles.toggleRow}>
-                {memberStatuses.map((status) => {
+                {(['active', 'pending', 'inactive'] as const).map((status) => {
                   const isActive = status === memberStatus;
                   return (
                     <Pressable
@@ -177,13 +208,16 @@ export default function MembersScreen() {
               </View>
               {avatar && (
                 <Image
-                  source={{ uri: avatar }}
+                  source={{ uri: avatar.uri }}
                   style={[styles.avatarPreview, { width: avatarSize * 1.6, height: avatarSize * 1.6 }]}
                   contentFit="cover"
                 />
               )}
-              <Pressable style={styles.primaryButton} onPress={handleSaveMember}>
-                <Text style={styles.primaryButtonText}>{editingMemberId ? 'Update member' : 'Save member'}</Text>
+              <Pressable
+                style={[styles.primaryButton, isSubmitting && styles.disabledButton]}
+                onPress={handleSaveMember}
+                disabled={isSubmitting}>
+                <Text style={styles.primaryButtonText}>{isSubmitting ? 'Saving…' : modalTitle}</Text>
               </Pressable>
             </View>
           </View>
@@ -191,7 +225,9 @@ export default function MembersScreen() {
 
         <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Member roster</Text>
-          <Text style={styles.sectionSubtitle}>View and maintain the active membership list</Text>
+          <Text style={styles.sectionSubtitle}>
+            {loading ? 'Loading roster…' : 'View and maintain the active membership list'}
+          </Text>
         </View>
 
         {members.map((member) => (
@@ -211,8 +247,9 @@ export default function MembersScreen() {
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.memberName}>{member.name}</Text>
                 <Text style={styles.memberEmail}>{member.email}</Text>
+                {member.phoneNumber ? <Text style={styles.memberMeta}>Phone: {member.phoneNumber}</Text> : null}
+                {member.roleLabel ? <Text style={styles.memberMeta}>Role: {member.roleLabel}</Text> : null}
                 <Text style={styles.memberMeta}>Status: {member.status.toUpperCase()}</Text>
-                <Text style={styles.memberMeta}>Monthly: ${member.monthlyContribution.toFixed(2)}</Text>
               </View>
               {canManage && (
                 <View style={styles.actionColumn}>
@@ -247,6 +284,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   actionButtonText: {
     color: '#fff',

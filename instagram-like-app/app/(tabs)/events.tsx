@@ -6,16 +6,20 @@ import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
 import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
+import { FileDescriptor } from '../../lib/api';
+
+type PickerAsset = FileDescriptor | null;
 
 export default function EventsScreen() {
-  const { events, addEvent, role } = useApp();
+  const { events, addEvent, deleteEvent, role, loading } = useApp();
   const layout = useResponsiveSpacing();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [location, setLocation] = useState('');
-  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [coverImage, setCoverImage] = useState<PickerAsset>(null);
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
+  const [isSubmitting, setSubmitting] = useState(false);
 
   const canCreate = role === 'admin';
 
@@ -25,9 +29,10 @@ export default function EventsScreen() {
     setStartsAt('');
     setLocation('');
     setCoverImage(null);
+    setSubmitting(false);
   };
 
-  const handleCreateEvent = () => {
+  const handleCreateEvent = async () => {
     if (!title.trim() || !description.trim() || !startsAt.trim() || !location.trim()) {
       return;
     }
@@ -37,16 +42,21 @@ export default function EventsScreen() {
       return;
     }
 
-    addEvent({
-      title: title.trim(),
-      description: description.trim(),
-      startsAt: date.toISOString(),
-      location: location.trim(),
-      coverImage: coverImage ?? undefined,
-    });
-
-    resetEventForm();
-    setCreateModalVisible(false);
+    try {
+      setSubmitting(true);
+      await addEvent({
+        title: title.trim(),
+        description: description.trim(),
+        startsAt: date.toISOString(),
+        location: location.trim(),
+        coverImage,
+      });
+      resetEventForm();
+      setCreateModalVisible(false);
+    } catch (error) {
+      console.warn('Failed to create event', error);
+      setSubmitting(false);
+    }
   };
 
   const pickImage = async () => {
@@ -59,10 +69,16 @@ export default function EventsScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setCoverImage(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setCoverImage({
+        uri: asset.uri,
+        name: asset.fileName ?? 'cover.jpg',
+        type: asset.mimeType ?? 'image/jpeg',
+      });
     }
   };
 
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const contentStyle = [
     styles.container,
     {
@@ -71,7 +87,6 @@ export default function EventsScreen() {
       gap: layout.gap,
     },
   ];
-  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
   const previewHeight = layout.isCompact ? 160 : 220;
   const cardImageHeight = layout.isCompact ? 180 : 240;
@@ -82,8 +97,11 @@ export default function EventsScreen() {
         <RoleSwitcher />
 
         {canCreate && (
-          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={() => setCreateModalVisible(true)}>
-            <Text style={styles.actionButtonText}>New Event</Text>
+          <Pressable
+            style={[styles.actionButton, constrainedWidth, isSubmitting && styles.disabledButton]}
+            onPress={() => setCreateModalVisible(true)}
+            disabled={isSubmitting}>
+            <Text style={styles.actionButtonText}>{isSubmitting ? 'Posting…' : 'New Event'}</Text>
           </Pressable>
         )}
 
@@ -127,13 +145,16 @@ export default function EventsScreen() {
               </View>
               {coverImage && (
                 <Image
-                  source={{ uri: coverImage }}
+                  source={{ uri: coverImage.uri }}
                   style={[styles.previewImage, { height: previewHeight }]}
                   contentFit="cover"
                 />
               )}
-              <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
-                <Text style={styles.primaryButtonText}>Publish event</Text>
+              <Pressable
+                style={[styles.primaryButton, isSubmitting && styles.disabledButton]}
+                onPress={handleCreateEvent}
+                disabled={isSubmitting}>
+                <Text style={styles.primaryButtonText}>{isSubmitting ? 'Publishing…' : 'Publish event'}</Text>
               </Pressable>
             </View>
           </View>
@@ -141,14 +162,23 @@ export default function EventsScreen() {
 
         <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Upcoming events</Text>
-          <Text style={styles.sectionSubtitle}>Community gatherings and important dates</Text>
+          <Text style={styles.sectionSubtitle}>
+            {loading ? 'Loading schedule…' : 'Community gatherings and important dates'}
+          </Text>
         </View>
 
         {events.map((event) => {
           const readableDate = new Date(event.startsAt).toLocaleString();
           return (
             <View key={event.id} style={[styles.card, constrainedWidth]}>
-              <Text style={styles.eventTitle}>{event.title}</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.eventTitle}>{event.title}</Text>
+                {role === 'admin' && (
+                  <Pressable style={styles.deleteButton} onPress={() => deleteEvent(event.id)}>
+                    <Text style={styles.deleteButtonText}>Delete</Text>
+                  </Pressable>
+                )}
+              </View>
               {event.coverImage ? (
                 <Image
                   source={{ uri: event.coverImage }}
@@ -182,6 +212,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   actionButtonText: {
     color: '#fff',
@@ -236,9 +269,24 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   eventTitle: {
     fontSize: 20,
     fontWeight: '700',
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#dc2626',
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   cardImage: {
     width: '100%',

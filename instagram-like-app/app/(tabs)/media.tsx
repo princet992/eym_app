@@ -6,42 +6,53 @@ import { Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
 import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
+import { FileDescriptor } from '../../lib/api';
+
+type PickerAsset = FileDescriptor | null;
 
 export default function MediaScreen() {
-  const { media, addMedia, role } = useApp();
+  const { media, addMedia, deleteMedia, role, loading } = useApp();
   const layout = useResponsiveSpacing();
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'image' | 'video'>('image');
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
+  const [file, setFile] = useState<PickerAsset>(null);
+  const [isSubmitting, setSubmitting] = useState(false);
 
   const canCreate = role === 'admin';
 
-  const resetMediaForm = () => {
+  const resetForm = () => {
     setTitle('');
     setUrl('');
     setDescription('');
     setType('image');
+    setFile(null);
+    setSubmitting(false);
   };
 
-  const handleAddMedia = () => {
-    if (!title.trim() || !url.trim()) {
+  const handleAddMedia = async () => {
+    if (!title.trim()) {
       return;
     }
-
-    addMedia({
-      title: title.trim(),
-      url: url.trim(),
-      description: description.trim(),
-      type,
-    });
-
-    resetMediaForm();
-    setCreateModalVisible(false);
+    try {
+      setSubmitting(true);
+      await addMedia({
+        title: title.trim(),
+        description: description.trim(),
+        file: type === 'image' ? file : null,
+        type,
+      });
+      resetForm();
+      setCreateModalVisible(false);
+    } catch (error) {
+      console.warn('Failed to create media item', error);
+      setSubmitting(false);
+    }
   };
 
-  const openMedia = (mediaUrl: string) => {
+  const openMediaLink = (mediaUrl: string) => {
     Linking.openURL(mediaUrl).catch(() => undefined);
   };
 
@@ -55,11 +66,18 @@ export default function MediaScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setUrl(result.assets[0]?.uri ?? '');
+      const asset = result.assets[0];
+      setFile({
+        uri: asset.uri,
+        name: asset.fileName ?? 'media.jpg',
+        type: asset.mimeType ?? 'image/jpeg',
+      });
+      setUrl(asset.uri);
       setType('image');
     }
   };
 
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const contentStyle = [
     styles.container,
     {
@@ -68,7 +86,6 @@ export default function MediaScreen() {
       gap: layout.gap,
     },
   ];
-  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
   const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
   const mediaHeight = layout.isCompact ? 200 : 240;
 
@@ -78,8 +95,11 @@ export default function MediaScreen() {
         <RoleSwitcher />
 
         {canCreate && (
-          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={() => setCreateModalVisible(true)}>
-            <Text style={styles.actionButtonText}>New Media</Text>
+          <Pressable
+            style={[styles.actionButton, constrainedWidth, isSubmitting && styles.disabledButton]}
+            onPress={() => setCreateModalVisible(true)}
+            disabled={isSubmitting}>
+            <Text style={styles.actionButtonText}>{isSubmitting ? 'Publishing…' : 'New Media'}</Text>
           </Pressable>
         )}
 
@@ -112,17 +132,23 @@ export default function MediaScreen() {
                 })}
               </View>
               <TextInput placeholder="Title" value={title} onChangeText={setTitle} style={styles.input} />
-              <TextInput placeholder="Media URL" value={url} onChangeText={setUrl} style={styles.input} />
-              <View style={styles.imagePickerRow}>
-                <Pressable style={styles.secondaryButton} onPress={pickImage}>
-                  <Text style={styles.secondaryButtonText}>Pick from gallery</Text>
-                </Pressable>
-                {url && type === 'image' && url.startsWith('file') && (
-                  <Pressable onPress={() => setUrl('')}>
-                    <Text style={styles.removeText}>Remove</Text>
-                  </Pressable>
-                )}
-              </View>
+              {type === 'video' ? (
+                <TextInput placeholder="Video URL" value={url} onChangeText={setUrl} style={styles.input} />
+              ) : (
+                <>
+                  <TextInput placeholder="Image caption" value={description} onChangeText={setDescription} style={styles.input} />
+                  <View style={styles.imagePickerRow}>
+                    <Pressable style={styles.secondaryButton} onPress={pickImage}>
+                      <Text style={styles.secondaryButtonText}>{file ? 'Change image' : 'Pick from gallery'}</Text>
+                    </Pressable>
+                    {file && (
+                      <Pressable onPress={() => setFile(null)}>
+                        <Text style={styles.removeText}>Remove</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </>
+              )}
               <TextInput
                 placeholder="Description (optional)"
                 value={description}
@@ -130,8 +156,11 @@ export default function MediaScreen() {
                 style={[styles.input, styles.multilineInput]}
                 multiline
               />
-              <Pressable style={styles.primaryButton} onPress={handleAddMedia}>
-                <Text style={styles.primaryButtonText}>Publish media</Text>
+              <Pressable
+                style={[styles.primaryButton, isSubmitting && styles.disabledButton]}
+                onPress={handleAddMedia}
+                disabled={isSubmitting}>
+                <Text style={styles.primaryButtonText}>{isSubmitting ? 'Publishing…' : 'Publish media'}</Text>
               </Pressable>
             </View>
           </View>
@@ -139,17 +168,30 @@ export default function MediaScreen() {
 
         <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Media gallery</Text>
-          <Text style={styles.sectionSubtitle}>Highlights from the community</Text>
+          <Text style={styles.sectionSubtitle}>
+            {loading ? 'Loading gallery…' : 'Highlights from the community'}
+          </Text>
         </View>
 
         {media.map((item) => (
           <View key={item.id} style={[styles.card, constrainedWidth]}>
-            <Text style={styles.mediaTitle}>{item.title}</Text>
+            <View style={styles.cardHeader}>
+              <Text style={styles.mediaTitle}>{item.title}</Text>
+              {role === 'admin' && (
+                <Pressable style={styles.deleteButton} onPress={() => deleteMedia(item.id)}>
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </Pressable>
+              )}
+            </View>
             <Text style={styles.mediaType}>{item.type.toUpperCase()}</Text>
             {item.type === 'image' ? (
-              <Image source={{ uri: item.url }} style={[styles.mediaImage, { height: mediaHeight }]} contentFit="cover" />
+              <Image
+                source={{ uri: item.url }}
+                style={[styles.mediaImage, { height: mediaHeight }]}
+                contentFit="cover"
+              />
             ) : (
-              <Pressable style={styles.secondaryButton} onPress={() => openMedia(item.url)}>
+              <Pressable style={styles.secondaryButton} onPress={() => openMediaLink(item.url)}>
                 <Text style={styles.secondaryButtonText}>Play video</Text>
               </Pressable>
             )}
@@ -176,6 +218,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   actionButtonText: {
     color: '#fff',
@@ -230,9 +275,24 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   mediaTitle: {
     fontSize: 20,
     fontWeight: '700',
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#dc2626',
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   mediaType: {
     fontSize: 14,
