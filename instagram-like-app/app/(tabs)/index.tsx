@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
@@ -8,7 +10,9 @@ export default function PostsScreen() {
   const { posts, addPost, addCommentToPost, role } = useApp();
   const [postTitle, setPostTitle] = useState('');
   const [postContent, setPostContent] = useState('');
+  const [postImage, setPostImage] = useState<string | null>(null);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [isCreateModalVisible, setCreateModalVisible] = useState(false);
 
   const canCreatePost = role === 'admin';
 
@@ -18,6 +22,12 @@ export default function PostsScreen() {
     return 'Community Guest';
   }, [role]);
 
+  const resetPostForm = () => {
+    setPostTitle('');
+    setPostContent('');
+    setPostImage(null);
+  };
+
   const handleCreatePost = () => {
     if (!postTitle.trim() || !postContent.trim()) {
       return;
@@ -25,9 +35,24 @@ export default function PostsScreen() {
     addPost({
       title: postTitle.trim(),
       content: postContent.trim(),
+      image: postImage ?? undefined,
     });
-    setPostTitle('');
-    setPostContent('');
+    resetPostForm();
+    setCreateModalVisible(false);
+  };
+
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPostImage(result.assets[0]?.uri ?? null);
+    }
   };
 
   const handleComment = (postId: string) => {
@@ -48,26 +73,54 @@ export default function PostsScreen() {
         <RoleSwitcher />
 
         {canCreatePost && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Create an update</Text>
-            <TextInput
-              placeholder="Post title"
-              value={postTitle}
-              onChangeText={setPostTitle}
-              style={styles.input}
-            />
-            <TextInput
-              placeholder="Share what's new"
-              value={postContent}
-              onChangeText={setPostContent}
-              style={[styles.input, styles.multilineInput]}
-              multiline
-            />
-            <Text style={styles.primaryButton} onPress={handleCreatePost}>
-              Publish post
-            </Text>
-          </View>
+          <Pressable style={styles.actionButton} onPress={() => setCreateModalVisible(true)}>
+            <Text style={styles.actionButtonText}>New Post</Text>
+          </Pressable>
         )}
+
+        <Modal
+          visible={isCreateModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCreateModalVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Create an update</Text>
+                <Pressable onPress={() => setCreateModalVisible(false)}>
+                  <Text style={styles.modalCloseText}>Close</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                placeholder="Post title"
+                value={postTitle}
+                onChangeText={setPostTitle}
+                style={styles.input}
+              />
+              <TextInput
+                placeholder="Share what's new"
+                value={postContent}
+                onChangeText={setPostContent}
+                style={[styles.input, styles.multilineInput]}
+                multiline
+              />
+              <View style={styles.imagePickerRow}>
+                <Pressable style={styles.secondaryButton} onPress={pickImage}>
+                  <Text style={styles.secondaryButtonText}>{postImage ? 'Change image' : 'Add image'}</Text>
+                </Pressable>
+                {postImage && (
+                  <Pressable onPress={() => setPostImage(null)}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </Pressable>
+                )}
+              </View>
+              {postImage && <Image source={{ uri: postImage }} style={styles.previewImage} contentFit="cover" />}
+              <Pressable style={styles.primaryButton} onPress={handleCreatePost}>
+                <Text style={styles.primaryButtonText}>Publish post</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Latest posts</Text>
@@ -77,6 +130,7 @@ export default function PostsScreen() {
         {posts.map((post) => (
           <View key={post.id} style={styles.card}>
             <Text style={styles.postTitle}>{post.title}</Text>
+            {post.image ? <Image source={{ uri: post.image }} style={styles.cardImage} contentFit="cover" /> : null}
             <Text style={styles.postContent}>{post.content}</Text>
             <View style={styles.commentsHeader}>
               <Text style={styles.cardSubtitle}>Comments</Text>
@@ -96,9 +150,9 @@ export default function PostsScreen() {
                 onChangeText={(value) => setCommentDrafts((prev) => ({ ...prev, [post.id]: value }))}
                 style={[styles.input, styles.commentInput]}
               />
-              <Text style={styles.secondaryButton} onPress={() => handleComment(post.id)}>
-                Post comment
-              </Text>
+              <Pressable style={styles.secondaryButton} onPress={() => handleComment(post.id)}>
+                <Text style={styles.secondaryButtonText}>Post comment</Text>
+              </Pressable>
             </View>
           </View>
         ))}
@@ -115,6 +169,43 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     gap: 16,
+  },
+  actionButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2563eb',
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  modalCloseText: {
+    color: '#6366f1',
+    fontWeight: '600',
   },
   sectionHeader: {
     gap: 4,
@@ -139,16 +230,16 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  cardImage: {
+    height: 200,
+    borderRadius: 12,
   },
   cardSubtitle: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  postTitle: {
-    fontSize: 20,
-    fontWeight: '700',
   },
   postContent: {
     fontSize: 16,
@@ -167,6 +258,16 @@ const styles = StyleSheet.create({
   multilineInput: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  imagePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  previewImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
   },
   commentComposer: {
     gap: 8,
@@ -196,22 +297,28 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignSelf: 'flex-start',
     backgroundColor: '#2563eb',
-    color: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: '#fff',
     fontWeight: '600',
-    overflow: 'hidden',
+    fontSize: 16,
   },
   secondaryButton: {
-    alignSelf: 'flex-end',
     backgroundColor: '#111827',
-    color: '#fff',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
     borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: '#fff',
     fontWeight: '600',
-    overflow: 'hidden',
+  },
+  removeText: {
+    color: '#dc2626',
+    fontWeight: '600',
   },
   commentsHeader: {
     flexDirection: 'row',

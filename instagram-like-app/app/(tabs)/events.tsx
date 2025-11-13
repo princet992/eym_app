@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
@@ -10,8 +12,18 @@ export default function EventsScreen() {
   const [description, setDescription] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [location, setLocation] = useState('');
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [isCreateModalVisible, setCreateModalVisible] = useState(false);
 
   const canCreate = role === 'admin';
+
+  const resetEventForm = () => {
+    setTitle('');
+    setDescription('');
+    setStartsAt('');
+    setLocation('');
+    setCoverImage(null);
+  };
 
   const handleCreateEvent = () => {
     if (!title.trim() || !description.trim() || !startsAt.trim() || !location.trim()) {
@@ -28,12 +40,25 @@ export default function EventsScreen() {
       description: description.trim(),
       startsAt: date.toISOString(),
       location: location.trim(),
+      coverImage: coverImage ?? undefined,
     });
 
-    setTitle('');
-    setDescription('');
-    setStartsAt('');
-    setLocation('');
+    resetEventForm();
+    setCreateModalVisible(false);
+  };
+
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setCoverImage(result.assets[0]?.uri ?? null);
+    }
   };
 
   return (
@@ -42,28 +67,56 @@ export default function EventsScreen() {
         <RoleSwitcher />
 
         {canCreate && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Schedule an event</Text>
-            <TextInput placeholder="Event name" value={title} onChangeText={setTitle} style={styles.input} />
-            <TextInput
-              placeholder="Description"
-              value={description}
-              onChangeText={setDescription}
-              style={[styles.input, styles.multilineInput]}
-              multiline
-            />
-            <TextInput
-              placeholder="Start date (e.g. 2025-11-25 18:00)"
-              value={startsAt}
-              onChangeText={setStartsAt}
-              style={styles.input}
-            />
-            <TextInput placeholder="Location" value={location} onChangeText={setLocation} style={styles.input} />
-            <Text style={styles.primaryButton} onPress={handleCreateEvent}>
-              Publish event
-            </Text>
-          </View>
+          <Pressable style={styles.actionButton} onPress={() => setCreateModalVisible(true)}>
+            <Text style={styles.actionButtonText}>New Event</Text>
+          </Pressable>
         )}
+
+        <Modal
+          visible={isCreateModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCreateModalVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Schedule an event</Text>
+                <Pressable onPress={() => setCreateModalVisible(false)}>
+                  <Text style={styles.modalCloseText}>Close</Text>
+                </Pressable>
+              </View>
+              <TextInput placeholder="Event name" value={title} onChangeText={setTitle} style={styles.input} />
+              <TextInput
+                placeholder="Description"
+                value={description}
+                onChangeText={setDescription}
+                style={[styles.input, styles.multilineInput]}
+                multiline
+              />
+              <TextInput
+                placeholder="Start date (e.g. 2025-11-25 18:00)"
+                value={startsAt}
+                onChangeText={setStartsAt}
+                style={styles.input}
+              />
+              <TextInput placeholder="Location" value={location} onChangeText={setLocation} style={styles.input} />
+              <View style={styles.imagePickerRow}>
+                <Pressable style={styles.secondaryButton} onPress={pickImage}>
+                  <Text style={styles.secondaryButtonText}>{coverImage ? 'Change image' : 'Add image'}</Text>
+                </Pressable>
+                {coverImage && (
+                  <Pressable onPress={() => setCoverImage(null)}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </Pressable>
+                )}
+              </View>
+              {coverImage && <Image source={{ uri: coverImage }} style={styles.previewImage} contentFit="cover" />}
+              <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
+                <Text style={styles.primaryButtonText}>Publish event</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Upcoming events</Text>
@@ -75,6 +128,9 @@ export default function EventsScreen() {
           return (
             <View key={event.id} style={styles.card}>
               <Text style={styles.eventTitle}>{event.title}</Text>
+              {event.coverImage ? (
+                <Image source={{ uri: event.coverImage }} style={styles.cardImage} contentFit="cover" />
+              ) : null}
               <Text style={styles.eventDate}>{readableDate}</Text>
               <Text style={styles.eventLocation}>{event.location}</Text>
               <Text style={styles.eventDescription}>{event.description}</Text>
@@ -94,6 +150,43 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     gap: 16,
+  },
+  actionButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#16a34a',
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  modalCloseText: {
+    color: '#16a34a',
+    fontWeight: '600',
   },
   sectionHeader: {
     gap: 4,
@@ -117,36 +210,13 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#f9fafb',
-  },
-  multilineInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  primaryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#16a34a',
-    color: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    fontWeight: '600',
-    overflow: 'hidden',
-  },
   eventTitle: {
     fontSize: 20,
     fontWeight: '700',
+  },
+  cardImage: {
+    height: 200,
+    borderRadius: 12,
   },
   eventDate: {
     fontSize: 15,
@@ -161,5 +231,54 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#374151',
     lineHeight: 22,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: '#f9fafb',
+  },
+  multilineInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  imagePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  previewImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+  },
+  primaryButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#16a34a',
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  secondaryButton: {
+    backgroundColor: '#1f2937',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  removeText: {
+    color: '#dc2626',
+    fontWeight: '600',
   },
 });

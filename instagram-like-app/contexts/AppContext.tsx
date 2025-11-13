@@ -23,6 +23,7 @@ export type Event = {
   description: string;
   startsAt: string;
   location: string;
+  coverImage?: string;
 };
 
 export type MediaItem = {
@@ -39,6 +40,7 @@ export type Member = {
   email: string;
   monthlyContribution: number;
   status: 'active' | 'pending' | 'inactive';
+  avatar?: string;
 };
 
 export type DonationRecord = {
@@ -47,6 +49,24 @@ export type DonationRecord = {
   amount: number;
   month: string;
   notedBy: string;
+};
+
+type ReliefBankDetail = {
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  ifsc?: string;
+  swift?: string;
+};
+
+export type ReliefFund = {
+  id: string;
+  title: string;
+  description: string;
+  goal: number;
+  raised: number;
+  bankDetails: ReliefBankDetail[];
+  contactEmail?: string;
 };
 
 type AppContextValue = {
@@ -61,8 +81,14 @@ type AppContextValue = {
   addMedia: (media: Omit<MediaItem, 'id'>) => void;
   members: Member[];
   addOrUpdateMember: (member: Omit<Member, 'id'> & { id?: string }) => void;
+  removeMember: (memberId: string) => void;
   donations: DonationRecord[];
   logDonation: (record: Omit<DonationRecord, 'id'>) => void;
+  updateDonation: (donationId: string, updates: Partial<Omit<DonationRecord, 'id'>>) => void;
+  removeDonation: (donationId: string) => void;
+  reliefFunds: ReliefFund[];
+  addOrUpdateReliefFund: (fund: Omit<ReliefFund, 'id' | 'raised'> & { id?: string; raised?: number }) => void;
+  removeReliefFund: (fundId: string) => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -75,6 +101,8 @@ const initialPosts: Post[] = [
     title: 'Community Outreach Success',
     content:
       'We had an amazing turnout for last week’s outreach. Thank you to everyone who volunteered their time and energy!',
+    image:
+      'https://images.unsplash.com/photo-1515165562835-c4c2b1c3d3c9?auto=format&fit=crop&w=900&q=60',
     comments: [
       {
         id: 'comment-1',
@@ -100,6 +128,8 @@ const initialEvents: Event[] = [
     description: 'An evening of celebration and fundraising for our youth mentorship program.',
     startsAt: new Date().toISOString(),
     location: 'Downtown Community Center',
+    coverImage:
+      'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=60',
   },
   {
     id: 'event-2',
@@ -128,8 +158,21 @@ const initialMedia: MediaItem[] = [
 ];
 
 const initialMembers: Member[] = [
-  { id: 'member-1', name: 'Alex Johnson', email: 'alex@example.com', monthlyContribution: 50, status: 'active' },
-  { id: 'member-2', name: 'Maria Chen', email: 'maria@example.com', monthlyContribution: 25, status: 'pending' },
+  {
+    id: 'member-1',
+    name: 'Alex Johnson',
+    email: 'alex@example.com',
+    monthlyContribution: 50,
+    status: 'active',
+    avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=400&q=60',
+  },
+  {
+    id: 'member-2',
+    name: 'Maria Chen',
+    email: 'maria@example.com',
+    monthlyContribution: 25,
+    status: 'pending',
+  },
 ];
 
 const initialDonations: DonationRecord[] = [
@@ -139,6 +182,32 @@ const initialDonations: DonationRecord[] = [
     amount: 50,
     month: '2025-10',
     notedBy: 'Admin',
+  },
+];
+
+const initialReliefFunds: ReliefFund[] = [
+  {
+    id: 'fund-1',
+    title: 'Flood Relief 2025',
+    description:
+      'Raising emergency support for families displaced by the recent floods. Funds will be used for housing, food, and medical supplies.',
+    goal: 25000,
+    raised: 11250,
+    bankDetails: [
+      {
+        bankName: 'National Cooperative Bank',
+        accountName: 'EYM Disaster Relief',
+        accountNumber: '1234567890',
+        ifsc: 'NCBL0001234',
+      },
+      {
+        bankName: 'City Credit Union',
+        accountName: 'EYM Relief USD',
+        accountNumber: '9988776655',
+        swift: 'CCUSUS44',
+      },
+    ],
+    contactEmail: 'relief@eym.org',
   },
 ];
 
@@ -153,6 +222,7 @@ export function AppProvider({ children }: AppProviderProps) {
   const [media, setMedia] = useState<MediaItem[]>(initialMedia);
   const [members, setMembers] = useState<Member[]>(initialMembers);
   const [donations, setDonations] = useState<DonationRecord[]>(initialDonations);
+  const [reliefFunds, setReliefFunds] = useState<ReliefFund[]>(initialReliefFunds);
 
   const addPost = (post: Omit<Post, 'id' | 'comments'>) => {
     setPosts((prev) => [
@@ -220,6 +290,11 @@ export function AppProvider({ children }: AppProviderProps) {
     });
   };
 
+  const removeMember = (memberId: string) => {
+    setMembers((prev) => prev.filter((member) => member.id !== memberId));
+    setDonations((prev) => prev.filter((donation) => donation.memberId !== memberId));
+  };
+
   const logDonation = (record: Omit<DonationRecord, 'id'>) => {
     setDonations((prev) => [
       ...prev,
@@ -228,6 +303,36 @@ export function AppProvider({ children }: AppProviderProps) {
         id: createId(),
       },
     ]);
+  };
+
+  const updateDonation = (donationId: string, updates: Partial<Omit<DonationRecord, 'id'>>) => {
+    setDonations((prev) =>
+      prev.map((donation) => (donation.id === donationId ? { ...donation, ...updates } : donation)),
+    );
+  };
+
+  const removeDonation = (donationId: string) => {
+    setDonations((prev) => prev.filter((donation) => donation.id !== donationId));
+  };
+
+  const addOrUpdateReliefFund = (fund: Omit<ReliefFund, 'id' | 'raised'> & { id?: string; raised?: number }) => {
+    setReliefFunds((prev) => {
+      if (fund.id) {
+        return prev.map((existing) => (existing.id === fund.id ? { ...existing, ...fund } : existing));
+      }
+      return [
+        ...prev,
+        {
+          ...fund,
+          id: createId(),
+          raised: fund.raised ?? 0,
+        },
+      ];
+    });
+  };
+
+  const removeReliefFund = (fundId: string) => {
+    setReliefFunds((prev) => prev.filter((fund) => fund.id !== fundId));
   };
 
   const value = useMemo<AppContextValue>(
@@ -243,10 +348,24 @@ export function AppProvider({ children }: AppProviderProps) {
       addMedia,
       members,
       addOrUpdateMember,
+      removeMember,
       donations,
       logDonation,
+      updateDonation,
+      removeDonation,
+      reliefFunds,
+      addOrUpdateReliefFund,
+      removeReliefFund,
     }),
-    [role, posts, events, media, members, donations],
+    [
+      role,
+      posts,
+      events,
+      media,
+      members,
+      donations,
+      reliefFunds,
+    ],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

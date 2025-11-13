@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Image } from 'expo-image';
 
@@ -12,8 +12,16 @@ export default function MediaScreen() {
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'image' | 'video'>('image');
+  const [isCreateModalVisible, setCreateModalVisible] = useState(false);
 
   const canCreate = role === 'admin';
+
+  const resetMediaForm = () => {
+    setTitle('');
+    setUrl('');
+    setDescription('');
+    setType('image');
+  };
 
   const handleAddMedia = () => {
     if (!title.trim() || !url.trim()) {
@@ -27,10 +35,8 @@ export default function MediaScreen() {
       type,
     });
 
-    setTitle('');
-    setUrl('');
-    setDescription('');
-    setType('image');
+    resetMediaForm();
+    setCreateModalVisible(false);
   };
 
   const openMedia = (mediaUrl: string) => {
@@ -43,35 +49,54 @@ export default function MediaScreen() {
         <RoleSwitcher />
 
         {canCreate && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Share new media</Text>
-            <View style={styles.toggleRow}>
-              {(['image', 'video'] as const).map((option) => {
-                const isActive = option === type;
-                return (
-                  <Text
-                    key={option}
-                    style={[styles.toggleChip, isActive && styles.toggleChipActive]}
-                    onPress={() => setType(option)}>
-                    {option.toUpperCase()}
-                  </Text>
-                );
-              })}
-            </View>
-            <TextInput placeholder="Title" value={title} onChangeText={setTitle} style={styles.input} />
-            <TextInput placeholder="Media URL" value={url} onChangeText={setUrl} style={styles.input} />
-            <TextInput
-              placeholder="Description (optional)"
-              value={description}
-              onChangeText={setDescription}
-              style={[styles.input, styles.multilineInput]}
-              multiline
-            />
-            <Text style={styles.primaryButton} onPress={handleAddMedia}>
-              Publish media
-            </Text>
-          </View>
+          <Pressable style={styles.actionButton} onPress={() => setCreateModalVisible(true)}>
+            <Text style={styles.actionButtonText}>New Media</Text>
+          </Pressable>
         )}
+
+        <Modal
+          visible={isCreateModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCreateModalVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Share new media</Text>
+                <Pressable onPress={() => setCreateModalVisible(false)}>
+                  <Text style={styles.modalCloseText}>Close</Text>
+                </Pressable>
+              </View>
+              <View style={styles.toggleRow}>
+                {(['image', 'video'] as const).map((option) => {
+                  const isActive = option === type;
+                  return (
+                    <Pressable
+                      key={option}
+                      style={[styles.toggleChip, isActive && styles.toggleChipActive]}
+                      onPress={() => setType(option)}>
+                      <Text style={[styles.toggleChipText, isActive && styles.toggleChipTextActive]}>
+                        {option.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <TextInput placeholder="Title" value={title} onChangeText={setTitle} style={styles.input} />
+              <TextInput placeholder="Media URL" value={url} onChangeText={setUrl} style={styles.input} />
+              <TextInput
+                placeholder="Description (optional)"
+                value={description}
+                onChangeText={setDescription}
+                style={[styles.input, styles.multilineInput]}
+                multiline
+              />
+              <Pressable style={styles.primaryButton} onPress={handleAddMedia}>
+                <Text style={styles.primaryButtonText}>Publish media</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Media gallery</Text>
@@ -85,9 +110,9 @@ export default function MediaScreen() {
             {item.type === 'image' ? (
               <Image source={{ uri: item.url }} style={styles.mediaImage} contentFit="cover" />
             ) : (
-              <Text style={styles.secondaryButton} onPress={() => openMedia(item.url)}>
-                Play video
-              </Text>
+              <Pressable style={styles.secondaryButton} onPress={() => openMedia(item.url)}>
+                <Text style={styles.secondaryButtonText}>Play video</Text>
+              </Pressable>
             )}
             {item.description ? <Text style={styles.mediaDescription}>{item.description}</Text> : null}
           </View>
@@ -105,6 +130,43 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     gap: 16,
+  },
+  actionButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#db2777',
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  modalCloseText: {
+    color: '#db2777',
+    fontWeight: '600',
   },
   sectionHeader: {
     gap: 4,
@@ -128,33 +190,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#f9fafb',
-  },
-  multilineInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  primaryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#db2777',
-    color: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    fontWeight: '600',
-    overflow: 'hidden',
-  },
   mediaTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -174,15 +209,41 @@ const styles = StyleSheet.create({
     color: '#374151',
     lineHeight: 22,
   },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: '#f9fafb',
+  },
+  multilineInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  primaryButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#db2777',
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
   secondaryButton: {
     alignSelf: 'flex-start',
     backgroundColor: '#312e81',
-    color: '#fff',
+    borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 999,
+  },
+  secondaryButtonText: {
+    color: '#fff',
     fontWeight: '600',
-    overflow: 'hidden',
   },
   toggleRow: {
     flexDirection: 'row',
@@ -194,12 +255,19 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    fontWeight: '700',
-    color: '#4b5563',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
   toggleChipActive: {
     backgroundColor: '#db2777',
     borderColor: '#db2777',
+  },
+  toggleChipText: {
+    fontWeight: '700',
+    color: '#4b5563',
+  },
+  toggleChipTextActive: {
     color: '#fff',
   },
 });

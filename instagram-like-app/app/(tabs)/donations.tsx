@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
@@ -8,8 +8,28 @@ const memberStatuses = ['active', 'pending', 'inactive'] as const;
 
 type MemberStatus = (typeof memberStatuses)[number];
 
+type DonationSummary = {
+  id: string;
+  memberId: string;
+  name: string;
+  month: string;
+  paid: number;
+  unpaid: number;
+  extra: number;
+  notedBy: string;
+};
+
 export default function DonationsScreen() {
-  const { members, addOrUpdateMember, donations, logDonation, role } = useApp();
+  const {
+    members,
+    addOrUpdateMember,
+    removeMember,
+    donations,
+    logDonation,
+    updateDonation,
+    removeDonation,
+    role,
+  } = useApp();
   const [memberName, setMemberName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [monthlyContribution, setMonthlyContribution] = useState('');
@@ -18,6 +38,7 @@ export default function DonationsScreen() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState('');
   const [donationMonth, setDonationMonth] = useState('');
+  const [editingDonationId, setEditingDonationId] = useState<string | null>(null);
 
   const canManage = role === 'admin';
   const canView = role === 'admin' || role === 'member';
@@ -70,6 +91,30 @@ export default function DonationsScreen() {
     setEditingMemberId(member.id);
   };
 
+  const handleRemoveMember = (memberId: string) => {
+    removeMember(memberId);
+    if (selectedMemberId === memberId) {
+      setSelectedMemberId(null);
+    }
+    if (editingMemberId === memberId) {
+      resetMemberForm();
+    }
+  };
+
+  const startEditingDonation = (summary: DonationSummary) => {
+    setEditingDonationId(summary.id);
+    setSelectedMemberId(summary.memberId);
+    setDonationAmount(summary.paid.toString());
+    setDonationMonth(summary.month);
+  };
+
+  const cancelDonationEdit = () => {
+    setEditingDonationId(null);
+    setSelectedMemberId(null);
+    setDonationAmount('');
+    setDonationMonth('');
+  };
+
   const handleLogDonation = () => {
     if (!selectedMemberId || !donationAmount.trim() || !donationMonth.trim()) {
       return;
@@ -80,16 +125,45 @@ export default function DonationsScreen() {
       return;
     }
 
-    logDonation({
-      memberId: selectedMemberId,
-      amount: amountValue,
-      month: donationMonth.trim(),
-      notedBy: 'Admin',
-    });
-
-    setDonationAmount('');
-    setDonationMonth('');
+    if (editingDonationId) {
+      updateDonation(editingDonationId, {
+        memberId: selectedMemberId,
+        amount: amountValue,
+        month: donationMonth.trim(),
+        notedBy: 'Admin',
+      });
+      cancelDonationEdit();
+    } else {
+      logDonation({
+        memberId: selectedMemberId,
+        amount: amountValue,
+        month: donationMonth.trim(),
+        notedBy: 'Admin',
+      });
+      setDonationAmount('');
+      setDonationMonth('');
+    }
   };
+
+  const donationSummaries: DonationSummary[] = useMemo(() => {
+    return donations.map((donation) => {
+      const member = members.find((item) => item.id === donation.memberId);
+      const monthlyTarget = member?.monthlyContribution ?? 0;
+      const unpaid = Math.max(monthlyTarget - donation.amount, 0);
+      const extra = donation.amount > monthlyTarget ? donation.amount - monthlyTarget : 0;
+
+      return {
+        id: donation.id,
+        memberId: donation.memberId,
+        name: member?.name ?? 'Unknown member',
+        month: donation.month,
+        paid: donation.amount,
+        unpaid,
+        extra,
+        notedBy: donation.notedBy,
+      };
+    });
+  }, [donations, members]);
 
   if (!canView) {
     return (
@@ -129,53 +203,59 @@ export default function DonationsScreen() {
               {memberStatuses.map((status) => {
                 const isActive = memberStatus === status;
                 return (
-                  <Text
+                  <Pressable
                     key={status}
                     style={[styles.toggleChip, isActive && styles.toggleChipActive]}
                     onPress={() => setMemberStatus(status)}>
-                    {status.toUpperCase()}
-                  </Text>
+                    <Text style={[styles.toggleChipText, isActive && styles.toggleChipTextActive]}>
+                      {status.toUpperCase()}
+                    </Text>
+                  </Pressable>
                 );
               })}
             </View>
-            <Text style={styles.primaryButton} onPress={handleSaveMember}>
-              {manageButtonLabel}
-            </Text>
+            <Pressable style={styles.primaryButton} onPress={handleSaveMember}>
+              <Text style={styles.primaryButtonText}>{manageButtonLabel}</Text>
+            </Pressable>
             {editingMemberId && (
-              <Text style={styles.helperLink} onPress={resetMemberForm}>
-                Cancel editing
-              </Text>
+              <Pressable onPress={resetMemberForm}>
+                <Text style={styles.helperLink}>Cancel editing</Text>
+              </Pressable>
             )}
             <View style={styles.memberList}>
               {members.map((member) => {
                 const isSelected = member.id === editingMemberId;
                 return (
-                  <Text
-                    key={`manage-${member.id}`}
-                    style={[styles.memberChip, isSelected && styles.memberChipActive]}
-                    onPress={() => handleEditMember(member.id)}>
-                    {member.name}
-                  </Text>
+                  <View key={`manage-${member.id}`} style={styles.memberRow}>
+                    <Pressable
+                      style={[styles.memberChip, isSelected && styles.memberChipActive]}
+                      onPress={() => handleEditMember(member.id)}>
+                      <Text style={[styles.memberChipText, isSelected && styles.memberChipTextActive]}>{member.name}</Text>
+                    </Pressable>
+                    <Pressable style={styles.dangerButton} onPress={() => handleRemoveMember(member.id)}>
+                      <Text style={styles.dangerButtonText}>Remove</Text>
+                    </Pressable>
+                  </View>
                 );
               })}
             </View>
-            <Text style={styles.helperText}>Tap a member to load their details for editing.</Text>
+            <Text style={styles.helperText}>Tap a member to load their details. Removing also clears payments.</Text>
           </View>
         )}
 
         {canManage && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Record monthly payment</Text>
+            <Text style={styles.cardTitle}>{editingDonationId ? 'Update payment' : 'Record monthly payment'}</Text>
             <View style={styles.memberList}>
               {members.map((member) => {
                 const isSelected = member.id === selectedMemberId;
                 return (
-                  <Text
+                  <Pressable
                     key={member.id}
                     style={[styles.memberChip, isSelected && styles.memberChipActive]}
                     onPress={() => setSelectedMemberId(member.id)}>
-                    {member.name}
-                  </Text>
+                    <Text style={[styles.memberChipText, isSelected && styles.memberChipTextActive]}>{member.name}</Text>
+                  </Pressable>
                 );
               })}
             </View>
@@ -195,9 +275,14 @@ export default function DonationsScreen() {
               onChangeText={setDonationMonth}
               style={styles.input}
             />
-            <Text style={styles.secondaryButton} onPress={handleLogDonation}>
-              Log payment
-            </Text>
+            <Pressable style={styles.secondaryButton} onPress={handleLogDonation}>
+              <Text style={styles.secondaryButtonText}>{editingDonationId ? 'Save payment' : 'Log payment'}</Text>
+            </Pressable>
+            {editingDonationId && (
+              <Pressable onPress={cancelDonationEdit}>
+                <Text style={styles.helperLink}>Cancel payment editing</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -217,20 +302,50 @@ export default function DonationsScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Payment history</Text>
-          <Text style={styles.sectionSubtitle}>Auditable record of donations</Text>
+          <Text style={styles.sectionSubtitle}>Name, month, paid, unpaid, extra, and actions</Text>
         </View>
 
-        {donations.map((donation) => {
-          const member = members.find((item) => item.id === donation.memberId);
-          return (
-            <View key={donation.id} style={styles.card}>
-              <Text style={styles.memberName}>{member?.name ?? 'Unknown member'}</Text>
-              <Text style={styles.memberMeta}>Month: {donation.month}</Text>
-              <Text style={styles.memberMeta}>Amount: ${donation.amount.toFixed(2)}</Text>
-              <Text style={styles.memberMeta}>Recorded by: {donation.notedBy}</Text>
+        {donationSummaries.length === 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.helperText}>No payments recorded yet.</Text>
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.table}>
+              <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                <Text style={[styles.tableCell, styles.tableCellName]}>Name</Text>
+                <Text style={styles.tableCell}>Month</Text>
+                <Text style={styles.tableCell}>Paid</Text>
+                <Text style={styles.tableCell}>Unpaid</Text>
+                <Text style={styles.tableCell}>Extra</Text>
+                <Text style={[styles.tableCell, styles.tableCellNotes]}>Noted by</Text>
+                {canManage && <Text style={[styles.tableCell, styles.tableCellActions]}>Actions</Text>}
+              </View>
+              {donationSummaries.map((record, index) => (
+                <View
+                  key={record.id}
+                  style={[styles.tableRow, index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd]}>
+                  <Text style={[styles.tableCell, styles.tableCellName]}>{record.name}</Text>
+                  <Text style={styles.tableCell}>{record.month}</Text>
+                  <Text style={styles.tableCell}>${record.paid.toFixed(2)}</Text>
+                  <Text style={styles.tableCell}>${record.unpaid.toFixed(2)}</Text>
+                  <Text style={styles.tableCell}>${record.extra.toFixed(2)}</Text>
+                  <Text style={[styles.tableCell, styles.tableCellNotes]}>{record.notedBy}</Text>
+                  {canManage && (
+                    <View style={[styles.tableCell, styles.tableCellActions]}>
+                      <Pressable style={styles.tableAction} onPress={() => startEditingDonation(record)}>
+                        <Text style={styles.tableActionText}>Edit</Text>
+                      </Pressable>
+                      <Pressable style={styles.tableActionDanger} onPress={() => removeDonation(record.id)}>
+                        <Text style={styles.tableActionDangerText}>Delete</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              ))}
             </View>
-          );
-        })}
+          </ScrollView>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -283,26 +398,31 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignSelf: 'flex-start',
     backgroundColor: '#0f766e',
-    color: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: '#fff',
     fontWeight: '600',
-    overflow: 'hidden',
+    fontSize: 16,
   },
   secondaryButton: {
     alignSelf: 'flex-end',
     backgroundColor: '#0f172a',
-    color: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  secondaryButtonText: {
+    color: '#fff',
     fontWeight: '600',
-    overflow: 'hidden',
+    fontSize: 16,
   },
   toggleRow: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
   toggleChip: {
     borderWidth: 1,
@@ -310,17 +430,27 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    fontWeight: '700',
-    color: '#4b5563',
+    backgroundColor: '#fff',
   },
   toggleChipActive: {
     backgroundColor: '#0f766e',
     borderColor: '#0f766e',
+  },
+  toggleChipText: {
+    fontWeight: '700',
+    color: '#4b5563',
+  },
+  toggleChipTextActive: {
     color: '#fff',
   },
   memberList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   memberChip: {
@@ -329,12 +459,17 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    color: '#1f2937',
-    fontWeight: '600',
+    backgroundColor: '#fff',
   },
   memberChipActive: {
     backgroundColor: '#0f172a',
     borderColor: '#0f172a',
+  },
+  memberChipText: {
+    color: '#1f2937',
+    fontWeight: '600',
+  },
+  memberChipTextActive: {
     color: '#fff',
   },
   memberName: {
@@ -356,6 +491,78 @@ const styles = StyleSheet.create({
   helperLink: {
     fontSize: 14,
     color: '#0f766e',
+    fontWeight: '600',
+  },
+  dangerButton: {
+    backgroundColor: '#b91c1c',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  dangerButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  table: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    minWidth: '100%',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  tableHeaderRow: {
+    backgroundColor: '#0f172a',
+  },
+  tableRowEven: {
+    backgroundColor: '#f8fafc',
+  },
+  tableRowOdd: {
+    backgroundColor: '#fff',
+  },
+  tableCell: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#1f2937',
+  },
+  tableCellName: {
+    flex: 1.4,
+    fontWeight: '600',
+  },
+  tableCellNotes: {
+    flex: 1.2,
+  },
+  tableCellActions: {
+    flex: 1.2,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tableAction: {
+    backgroundColor: '#1d4ed8',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tableActionText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  tableActionDanger: {
+    backgroundColor: '#dc2626',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tableActionDangerText: {
+    color: '#fff',
     fontWeight: '600',
   },
 });

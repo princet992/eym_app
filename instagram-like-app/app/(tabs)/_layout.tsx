@@ -11,6 +11,9 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { role } = useApp();
 
+  const canSeeMembership = role === 'admin' || role === 'member';
+  const canSeeDonations = role !== 'guest';
+
   return (
     <Tabs
       screenOptions={{
@@ -39,7 +42,16 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="play.rectangle" color={color} />,
         }}
       />
-      {role !== 'guest' && (
+      {canSeeMembership && (
+        <Tabs.Screen
+          name="members"
+          options={{
+            title: 'Members',
+            tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.3.fill" color={color} />,
+          }}
+        />
+      )}
+      {canSeeDonations && (
         <Tabs.Screen
           name="donations"
           options={{
@@ -48,6 +60,13 @@ export default function TabLayout() {
           }}
         />
       )}
+      <Tabs.Screen
+        name="funds"
+        options={{
+          title: 'Relief',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="hands.sparkles.fill" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
