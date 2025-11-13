@@ -3,6 +3,7 @@ import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { ReliefFund, useApp } from '../../contexts/AppContext';
+import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
 
 const emptyBankDetail = { bankName: '', accountName: '', accountNumber: '', ifsc: '', swift: '' };
 
@@ -27,6 +28,7 @@ const defaults: EditableFund = {
 
 export default function ReliefFundScreen() {
   const { reliefFunds, role, addOrUpdateReliefFund, removeReliefFund } = useApp();
+  const layout = useResponsiveSpacing();
   const [fundDraft, setFundDraft] = useState<EditableFund>(defaults);
   const [isModalVisible, setModalVisible] = useState(false);
 
@@ -108,13 +110,24 @@ export default function ReliefFundScreen() {
 
   const formatCurrency = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
+  const contentStyle = [
+    styles.container,
+    {
+      paddingHorizontal: layout.horizontal,
+      paddingVertical: layout.vertical,
+      gap: layout.gap,
+    },
+  ];
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
+  const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={contentStyle}>
         <RoleSwitcher />
 
         {canManage && (
-          <Pressable style={styles.actionButton} onPress={openCreateModal}>
+          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={openCreateModal}>
             <Text style={styles.actionButtonText}>New Appeal</Text>
           </Pressable>
         )}
@@ -125,8 +138,8 @@ export default function ReliefFundScreen() {
           transparent
           onRequestClose={() => setModalVisible(false)}>
           <View style={styles.modalBackdrop}>
-            <ScrollView contentContainerStyle={styles.modalScroll}>
-              <View style={styles.modalCard}>
+            <ScrollView contentContainerStyle={{ flexGrow: 0 }}>
+              <View style={modalCardStyle}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{modalTitle}</Text>
                   <Pressable onPress={() => setModalVisible(false)}>
@@ -230,7 +243,7 @@ export default function ReliefFundScreen() {
           </View>
         </Modal>
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Active relief appeals</Text>
           <Text style={styles.sectionSubtitle}>
             Share these details with supporters to coordinate swift relief funding.
@@ -238,7 +251,7 @@ export default function ReliefFundScreen() {
         </View>
 
         {reliefFunds.map((fund) => (
-          <View key={fund.id} style={styles.card}>
+          <View key={fund.id} style={[styles.card, constrainedWidth]}>
             <View style={styles.cardHeader}>
               <View style={{ flex: 1, gap: 8 }}>
                 <Text style={styles.fundTitle}>{fund.title}</Text>
@@ -284,7 +297,7 @@ export default function ReliefFundScreen() {
         ))}
 
         {reliefFunds.length === 0 && (
-          <View style={styles.card}>
+          <View style={[styles.card, constrainedWidth]}>
             <Text style={styles.helperText}>No disaster appeals yet. Admins can publish the first one.</Text>
           </View>
         )}
@@ -299,15 +312,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#f4f4f5',
   },
   container: {
-    padding: 16,
     gap: 16,
   },
   actionButton: {
-    alignSelf: 'flex-start',
     backgroundColor: '#9333ea',
     borderRadius: 999,
     paddingHorizontal: 20,
     paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     color: '#fff',
@@ -320,14 +333,12 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: 'center',
   },
-  modalScroll: {
-    flexGrow: 0,
-  },
   modalCard: {
     backgroundColor: '#fff',
     borderRadius: 24,
     padding: 20,
     gap: 16,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -384,6 +395,7 @@ const styles = StyleSheet.create({
   goalRow: {
     flexDirection: 'row',
     gap: 16,
+    flexWrap: 'wrap',
   },
   goalText: {
     fontWeight: '600',
@@ -446,9 +458,11 @@ const styles = StyleSheet.create({
   inlineInputs: {
     flexDirection: 'row',
     gap: 12,
+    flexWrap: 'wrap',
   },
   inlineInput: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '48%',
   },
   bankHeader: {
     fontSize: 18,

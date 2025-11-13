@@ -5,9 +5,11 @@ import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
+import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
 
 export default function PostsScreen() {
   const { posts, addPost, addCommentToPost, role } = useApp();
+  const layout = useResponsiveSpacing();
   const [postTitle, setPostTitle] = useState('');
   const [postContent, setPostContent] = useState('');
   const [postImage, setPostImage] = useState<string | null>(null);
@@ -67,13 +69,26 @@ export default function PostsScreen() {
     setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
   };
 
+  const contentStyle = [
+    styles.container,
+    {
+      paddingHorizontal: layout.horizontal,
+      paddingVertical: layout.vertical,
+      gap: layout.gap,
+    },
+  ];
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
+  const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
+  const previewHeight = layout.isCompact ? 160 : 220;
+  const cardImageHeight = layout.isCompact ? 180 : 240;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={contentStyle}>
         <RoleSwitcher />
 
         {canCreatePost && (
-          <Pressable style={styles.actionButton} onPress={() => setCreateModalVisible(true)}>
+          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={() => setCreateModalVisible(true)}>
             <Text style={styles.actionButtonText}>New Post</Text>
           </Pressable>
         )}
@@ -84,7 +99,7 @@ export default function PostsScreen() {
           transparent
           onRequestClose={() => setCreateModalVisible(false)}>
           <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
+            <View style={modalCardStyle}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Create an update</Text>
                 <Pressable onPress={() => setCreateModalVisible(false)}>
@@ -114,7 +129,9 @@ export default function PostsScreen() {
                   </Pressable>
                 )}
               </View>
-              {postImage && <Image source={{ uri: postImage }} style={styles.previewImage} contentFit="cover" />}
+              {postImage && (
+                <Image source={{ uri: postImage }} style={[styles.previewImage, { height: previewHeight }]} contentFit="cover" />
+              )}
               <Pressable style={styles.primaryButton} onPress={handleCreatePost}>
                 <Text style={styles.primaryButtonText}>Publish post</Text>
               </Pressable>
@@ -122,15 +139,21 @@ export default function PostsScreen() {
           </View>
         </Modal>
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Latest posts</Text>
           <Text style={styles.sectionSubtitle}>Updates authored by the admin team</Text>
         </View>
 
         {posts.map((post) => (
-          <View key={post.id} style={styles.card}>
-            <Text style={styles.postTitle}>{post.title}</Text>
-            {post.image ? <Image source={{ uri: post.image }} style={styles.cardImage} contentFit="cover" /> : null}
+          <View key={post.id} style={[styles.card, constrainedWidth]}>
+            <Text style={styles.cardTitle}>{post.title}</Text>
+            {post.image ? (
+              <Image
+                source={{ uri: post.image }}
+                style={[styles.cardImage, { height: cardImageHeight }]}
+                contentFit="cover"
+              />
+            ) : null}
             <Text style={styles.postContent}>{post.content}</Text>
             <View style={styles.commentsHeader}>
               <Text style={styles.cardSubtitle}>Comments</Text>
@@ -167,15 +190,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
   },
   container: {
-    padding: 16,
     gap: 16,
   },
   actionButton: {
-    alignSelf: 'flex-start',
     backgroundColor: '#2563eb',
     borderRadius: 999,
     paddingHorizontal: 20,
     paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     color: '#fff',
@@ -193,6 +216,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -234,8 +258,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardImage: {
-    height: 200,
     borderRadius: 12,
+    width: '100%',
   },
   cardSubtitle: {
     fontSize: 16,
@@ -266,7 +290,6 @@ const styles = StyleSheet.create({
   },
   previewImage: {
     width: '100%',
-    height: 180,
     borderRadius: 12,
   },
   commentComposer: {

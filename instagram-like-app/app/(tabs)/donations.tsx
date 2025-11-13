@@ -3,6 +3,7 @@ import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View 
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
+import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
 
 const memberStatuses = ['active', 'pending', 'inactive'] as const;
 
@@ -30,6 +31,7 @@ export default function DonationsScreen() {
     removeDonation,
     role,
   } = useApp();
+  const layout = useResponsiveSpacing();
   const [memberName, setMemberName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [monthlyContribution, setMonthlyContribution] = useState('');
@@ -168,9 +170,17 @@ export default function DonationsScreen() {
   if (!canView) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.container}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.container,
+            {
+              paddingHorizontal: layout.horizontal,
+              paddingVertical: layout.vertical,
+              gap: layout.gap,
+            },
+          ]}>
           <RoleSwitcher />
-          <View style={styles.card}>
+          <View style={[styles.card, { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' }]}>
             <Text style={styles.sectionTitle}>Donations are restricted</Text>
             <Text style={styles.sectionSubtitle}>
               Only registered members can view contribution information. Switch to another role to preview this
@@ -182,13 +192,23 @@ export default function DonationsScreen() {
     );
   }
 
+  const contentStyle = [
+    styles.container,
+    {
+      paddingHorizontal: layout.horizontal,
+      paddingVertical: layout.vertical,
+      gap: layout.gap,
+    },
+  ];
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={contentStyle}>
         <RoleSwitcher />
 
         {canManage && (
-          <View style={styles.card}>
+          <View style={[styles.card, constrainedWidth]}>
             <Text style={styles.cardTitle}>Manage members</Text>
             <TextInput placeholder="Full name" value={memberName} onChangeText={setMemberName} style={styles.input} />
             <TextInput placeholder="Email" value={memberEmail} onChangeText={setMemberEmail} style={styles.input} />
@@ -222,7 +242,7 @@ export default function DonationsScreen() {
                 <Text style={styles.helperLink}>Cancel editing</Text>
               </Pressable>
             )}
-            <View style={styles.memberList}>
+            <View style={[styles.memberList, { columnGap: layout.gap, rowGap: layout.gap }]}>
               {members.map((member) => {
                 const isSelected = member.id === editingMemberId;
                 return (
@@ -244,9 +264,9 @@ export default function DonationsScreen() {
         )}
 
         {canManage && (
-          <View style={styles.card}>
+          <View style={[styles.card, constrainedWidth]}>
             <Text style={styles.cardTitle}>{editingDonationId ? 'Update payment' : 'Record monthly payment'}</Text>
-            <View style={styles.memberList}>
+            <View style={[styles.memberList, { columnGap: layout.gap, rowGap: layout.gap }]}>
               {members.map((member) => {
                 const isSelected = member.id === selectedMemberId;
                 return (
@@ -286,13 +306,13 @@ export default function DonationsScreen() {
           </View>
         )}
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Member roster</Text>
           <Text style={styles.sectionSubtitle}>Monthly contributions and current status</Text>
         </View>
 
         {members.map((member) => (
-          <View key={member.id} style={styles.card}>
+          <View key={member.id} style={[styles.card, constrainedWidth]}>
             <Text style={styles.memberName}>{member.name}</Text>
             <Text style={styles.memberEmail}>{member.email}</Text>
             <Text style={styles.memberMeta}>Status: {member.status.toUpperCase()}</Text>
@@ -300,18 +320,18 @@ export default function DonationsScreen() {
           </View>
         ))}
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Payment history</Text>
           <Text style={styles.sectionSubtitle}>Name, month, paid, unpaid, extra, and actions</Text>
         </View>
 
         {donationSummaries.length === 0 ? (
-          <View style={styles.card}>
+          <View style={[styles.card, constrainedWidth]}>
             <Text style={styles.helperText}>No payments recorded yet.</Text>
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.table}>
+            <View style={[styles.table, { minWidth: layout.contentMaxWidth }]}>
               <View style={[styles.tableRow, styles.tableHeaderRow]}>
                 <Text style={[styles.tableCell, styles.tableCellName]}>Name</Text>
                 <Text style={styles.tableCell}>Month</Text>
@@ -357,7 +377,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   container: {
-    padding: 16,
     gap: 16,
   },
   sectionHeader: {
@@ -446,7 +465,6 @@ const styles = StyleSheet.create({
   memberList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
   },
   memberRow: {
     flexDirection: 'row',
@@ -509,7 +527,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    minWidth: '100%',
   },
   tableRow: {
     flexDirection: 'row',

@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { Linking, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
+import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
 
 export default function MediaScreen() {
   const { media, addMedia, role } = useApp();
+  const layout = useResponsiveSpacing();
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
@@ -43,13 +45,40 @@ export default function MediaScreen() {
     Linking.openURL(mediaUrl).catch(() => undefined);
   };
 
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setUrl(result.assets[0]?.uri ?? '');
+      setType('image');
+    }
+  };
+
+  const contentStyle = [
+    styles.container,
+    {
+      paddingHorizontal: layout.horizontal,
+      paddingVertical: layout.vertical,
+      gap: layout.gap,
+    },
+  ];
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
+  const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
+  const mediaHeight = layout.isCompact ? 200 : 240;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={contentStyle}>
         <RoleSwitcher />
 
         {canCreate && (
-          <Pressable style={styles.actionButton} onPress={() => setCreateModalVisible(true)}>
+          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={() => setCreateModalVisible(true)}>
             <Text style={styles.actionButtonText}>New Media</Text>
           </Pressable>
         )}
@@ -60,7 +89,7 @@ export default function MediaScreen() {
           transparent
           onRequestClose={() => setCreateModalVisible(false)}>
           <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
+            <View style={modalCardStyle}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Share new media</Text>
                 <Pressable onPress={() => setCreateModalVisible(false)}>
@@ -84,6 +113,16 @@ export default function MediaScreen() {
               </View>
               <TextInput placeholder="Title" value={title} onChangeText={setTitle} style={styles.input} />
               <TextInput placeholder="Media URL" value={url} onChangeText={setUrl} style={styles.input} />
+              <View style={styles.imagePickerRow}>
+                <Pressable style={styles.secondaryButton} onPress={pickImage}>
+                  <Text style={styles.secondaryButtonText}>Pick from gallery</Text>
+                </Pressable>
+                {url && type === 'image' && url.startsWith('file') && (
+                  <Pressable onPress={() => setUrl('')}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </Pressable>
+                )}
+              </View>
               <TextInput
                 placeholder="Description (optional)"
                 value={description}
@@ -98,17 +137,17 @@ export default function MediaScreen() {
           </View>
         </Modal>
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Media gallery</Text>
           <Text style={styles.sectionSubtitle}>Highlights from the community</Text>
         </View>
 
         {media.map((item) => (
-          <View key={item.id} style={styles.card}>
+          <View key={item.id} style={[styles.card, constrainedWidth]}>
             <Text style={styles.mediaTitle}>{item.title}</Text>
             <Text style={styles.mediaType}>{item.type.toUpperCase()}</Text>
             {item.type === 'image' ? (
-              <Image source={{ uri: item.url }} style={styles.mediaImage} contentFit="cover" />
+              <Image source={{ uri: item.url }} style={[styles.mediaImage, { height: mediaHeight }]} contentFit="cover" />
             ) : (
               <Pressable style={styles.secondaryButton} onPress={() => openMedia(item.url)}>
                 <Text style={styles.secondaryButtonText}>Play video</Text>
@@ -128,15 +167,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
   },
   container: {
-    padding: 16,
     gap: 16,
   },
   actionButton: {
-    alignSelf: 'flex-start',
     backgroundColor: '#db2777',
     borderRadius: 999,
     paddingHorizontal: 20,
     paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     color: '#fff',
@@ -154,6 +193,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -200,7 +240,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   mediaImage: {
-    height: 220,
+    width: '100%',
     borderRadius: 12,
     backgroundColor: '#e5e7eb',
   },
@@ -235,7 +275,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   secondaryButton: {
-    alignSelf: 'flex-start',
     backgroundColor: '#312e81',
     borderRadius: 999,
     paddingHorizontal: 16,
@@ -269,5 +308,14 @@ const styles = StyleSheet.create({
   },
   toggleChipTextActive: {
     color: '#fff',
+  },
+  imagePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  removeText: {
+    color: '#dc2626',
+    fontWeight: '600',
   },
 });

@@ -5,9 +5,11 @@ import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
+import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
 
 export default function EventsScreen() {
   const { events, addEvent, role } = useApp();
+  const layout = useResponsiveSpacing();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [startsAt, setStartsAt] = useState('');
@@ -61,13 +63,26 @@ export default function EventsScreen() {
     }
   };
 
+  const contentStyle = [
+    styles.container,
+    {
+      paddingHorizontal: layout.horizontal,
+      paddingVertical: layout.vertical,
+      gap: layout.gap,
+    },
+  ];
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
+  const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
+  const previewHeight = layout.isCompact ? 160 : 220;
+  const cardImageHeight = layout.isCompact ? 180 : 240;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={contentStyle}>
         <RoleSwitcher />
 
         {canCreate && (
-          <Pressable style={styles.actionButton} onPress={() => setCreateModalVisible(true)}>
+          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={() => setCreateModalVisible(true)}>
             <Text style={styles.actionButtonText}>New Event</Text>
           </Pressable>
         )}
@@ -78,7 +93,7 @@ export default function EventsScreen() {
           transparent
           onRequestClose={() => setCreateModalVisible(false)}>
           <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
+            <View style={modalCardStyle}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Schedule an event</Text>
                 <Pressable onPress={() => setCreateModalVisible(false)}>
@@ -110,7 +125,13 @@ export default function EventsScreen() {
                   </Pressable>
                 )}
               </View>
-              {coverImage && <Image source={{ uri: coverImage }} style={styles.previewImage} contentFit="cover" />}
+              {coverImage && (
+                <Image
+                  source={{ uri: coverImage }}
+                  style={[styles.previewImage, { height: previewHeight }]}
+                  contentFit="cover"
+                />
+              )}
               <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
                 <Text style={styles.primaryButtonText}>Publish event</Text>
               </Pressable>
@@ -118,7 +139,7 @@ export default function EventsScreen() {
           </View>
         </Modal>
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Upcoming events</Text>
           <Text style={styles.sectionSubtitle}>Community gatherings and important dates</Text>
         </View>
@@ -126,10 +147,14 @@ export default function EventsScreen() {
         {events.map((event) => {
           const readableDate = new Date(event.startsAt).toLocaleString();
           return (
-            <View key={event.id} style={styles.card}>
+            <View key={event.id} style={[styles.card, constrainedWidth]}>
               <Text style={styles.eventTitle}>{event.title}</Text>
               {event.coverImage ? (
-                <Image source={{ uri: event.coverImage }} style={styles.cardImage} contentFit="cover" />
+                <Image
+                  source={{ uri: event.coverImage }}
+                  style={[styles.cardImage, { height: cardImageHeight }]}
+                  contentFit="cover"
+                />
               ) : null}
               <Text style={styles.eventDate}>{readableDate}</Text>
               <Text style={styles.eventLocation}>{event.location}</Text>
@@ -148,15 +173,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   container: {
-    padding: 16,
     gap: 16,
   },
   actionButton: {
-    alignSelf: 'flex-start',
     backgroundColor: '#16a34a',
     borderRadius: 999,
     paddingHorizontal: 20,
     paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     color: '#fff',
@@ -174,6 +199,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -215,7 +241,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardImage: {
-    height: 200,
+    width: '100%',
     borderRadius: 12,
   },
   eventDate: {
@@ -252,7 +278,6 @@ const styles = StyleSheet.create({
   },
   previewImage: {
     width: '100%',
-    height: 180,
     borderRadius: 12,
   },
   primaryButton: {

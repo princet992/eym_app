@@ -5,6 +5,7 @@ import { Alert, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, Te
 
 import { RoleSwitcher } from '../../components/RoleSwitcher';
 import { useApp } from '../../contexts/AppContext';
+import { useResponsiveSpacing } from '../../hooks/use-responsive-spacing';
 
 const memberStatuses = ['active', 'pending', 'inactive'] as const;
 
@@ -12,6 +13,7 @@ type MemberStatus = (typeof memberStatuses)[number];
 
 export default function MembersScreen() {
   const { members, role, addOrUpdateMember, removeMember } = useApp();
+  const layout = useResponsiveSpacing();
   const [isModalVisible, setModalVisible] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberName, setMemberName] = useState('');
@@ -103,13 +105,25 @@ export default function MembersScreen() {
     );
   };
 
+  const contentStyle = [
+    styles.container,
+    {
+      paddingHorizontal: layout.horizontal,
+      paddingVertical: layout.vertical,
+      gap: layout.gap,
+    },
+  ];
+  const constrainedWidth = { width: '100%', maxWidth: layout.contentMaxWidth, alignSelf: 'center' };
+  const modalCardStyle = [styles.modalCard, { width: layout.modalWidth }];
+  const avatarSize = layout.isCompact ? 56 : 64;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={contentStyle}>
         <RoleSwitcher />
 
         {canManage && (
-          <Pressable style={styles.actionButton} onPress={openCreateModal}>
+          <Pressable style={[styles.actionButton, constrainedWidth]} onPress={openCreateModal}>
             <Text style={styles.actionButtonText}>New Member</Text>
           </Pressable>
         )}
@@ -120,7 +134,7 @@ export default function MembersScreen() {
           transparent
           onRequestClose={() => setModalVisible(false)}>
           <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
+            <View style={modalCardStyle}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{modalTitle}</Text>
                 <Pressable onPress={() => setModalVisible(false)}>
@@ -161,7 +175,13 @@ export default function MembersScreen() {
                   </Pressable>
                 )}
               </View>
-              {avatar && <Image source={{ uri: avatar }} style={styles.avatarPreview} contentFit="cover" />}
+              {avatar && (
+                <Image
+                  source={{ uri: avatar }}
+                  style={[styles.avatarPreview, { width: avatarSize * 1.6, height: avatarSize * 1.6 }]}
+                  contentFit="cover"
+                />
+              )}
               <Pressable style={styles.primaryButton} onPress={handleSaveMember}>
                 <Text style={styles.primaryButtonText}>{editingMemberId ? 'Update member' : 'Save member'}</Text>
               </Pressable>
@@ -169,18 +189,22 @@ export default function MembersScreen() {
           </View>
         </Modal>
 
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, constrainedWidth]}>
           <Text style={styles.sectionTitle}>Member roster</Text>
           <Text style={styles.sectionSubtitle}>View and maintain the active membership list</Text>
         </View>
 
         {members.map((member) => (
-          <View key={member.id} style={styles.card}>
+          <View key={member.id} style={[styles.card, constrainedWidth]}>
             <View style={styles.cardHeader}>
               {member.avatar ? (
-                <Image source={{ uri: member.avatar }} style={styles.cardAvatar} contentFit="cover" />
+                <Image
+                  source={{ uri: member.avatar }}
+                  style={[styles.cardAvatar, { width: avatarSize, height: avatarSize }]}
+                  contentFit="cover"
+                />
               ) : (
-                <View style={styles.avatarFallback}>
+                <View style={[styles.avatarFallback, { width: avatarSize, height: avatarSize }]}> 
                   <Text style={styles.avatarFallbackText}>{member.name.charAt(0).toUpperCase()}</Text>
                 </View>
               )}
@@ -214,15 +238,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   container: {
-    padding: 16,
     gap: 16,
   },
   actionButton: {
-    alignSelf: 'flex-start',
     backgroundColor: '#0f766e',
     borderRadius: 999,
     paddingHorizontal: 20,
     paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionButtonText: {
     color: '#fff',
@@ -240,6 +264,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 16,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -282,13 +307,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardAvatar: {
-    width: 64,
-    height: 64,
     borderRadius: 999,
   },
   avatarFallback: {
-    width: 64,
-    height: 64,
     borderRadius: 999,
     backgroundColor: '#0f766e',
     alignItems: 'center',
@@ -386,8 +407,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   avatarPreview: {
-    width: 100,
-    height: 100,
     borderRadius: 999,
     alignSelf: 'center',
   },
